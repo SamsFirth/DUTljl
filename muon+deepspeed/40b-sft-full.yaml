@@ -1,0 +1,44 @@
+### model
+model_name_or_path: /mnt/llm-data/users/wanghao277/chatrhino-40B/hf-ckpt/pt-v2-tkn-129k-lr4.2e-4-decay500B/14860
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: examples/deepspeed/ds_z3_config.json
+use_muon: true
+
+### dataset
+dataset: wmzy_train
+template: deepseek3
+cutoff_len: 20480
+max_samples: 100000
+overwrite_cache: true
+preprocessing_num_workers: 1
+dataloader_num_workers: 0
+
+### output
+output_dir: /mnt/llm-data/users/wanghao277/40b-output-all-train
+logging_steps: 50
+save_steps: 500 # 这里！！！！！！！！！！！！！！！！1
+plot_loss: true
+overwrite_output_dir: false
+save_only_model: true
+report_to: none  # choices: [none, wandb, tensorboard, swanlab, mlflow]
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+learning_rate: 1.0e-5
+num_train_epochs: 2.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+### eval
+# val_size: 0.1
+# per_device_eval_batch_size: 1
+# eval_strategy: steps
+# eval_steps: 500

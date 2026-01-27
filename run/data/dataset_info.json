@@ -1,0 +1,9 @@
+{
+  "your-dataset-name": { 
+    "file_name": "path/to/your_dataset.json",
+    "columns":{
+      "prompt":"instruction",
+      "response":"output"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+model_name_or_path: /path/to/your-model
+adapter_name_or_path: /path/to/your-adapter
+template: chatrhino
+infer_backend: joyaiSFT
+trust_remote_code: true
+
+use_joysft: true
+joy_optimize_rule: default
+cpu_infer: 32
+chunk_size: 8192

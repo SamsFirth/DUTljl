@@ -1,0 +1,1 @@
+recursive-include joyaiSFT *.yaml *.json *.bin *.sh *.py *.cmake

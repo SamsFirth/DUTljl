@@ -1,0 +1,10 @@
+project = 'mscclpp'
+copyright = '2023, MSCCL++ Team'
+author = 'MSCCL++ Team'
+release = 'v0.5.1'
+extensions = ['breathe']
+templates_path = ['_templates']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+breathe_default_project = 'mscclpp'
+html_theme = 'sphinx_rtd_theme'
+html_static_path = ['_static']

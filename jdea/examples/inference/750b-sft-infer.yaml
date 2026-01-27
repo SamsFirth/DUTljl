@@ -1,0 +1,10 @@
+model_name_or_path: /mnt/llm-data/users/wanghao277/model/750b/bf16_model
+adapter_name_or_path: /mnt/llm-data/users/wanghao277/sft-ouput/KTR-output/checkpoint-12
+template: chatrhino
+infer_backend: joyaiSFT
+trust_remote_code: true
+
+use_joysft: true
+joy_optimize_rule: default
+cpu_infer: 32
+chunk_size: 8192

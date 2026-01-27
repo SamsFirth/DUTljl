@@ -1,0 +1,35 @@
+{                                      
+    "wmzy_train":
+    {
+        "file_name": "/mnt/llm-data/users/wanghao277/data/wmzy/wmzy_train.json",
+        "formatting": "alpaca",
+        "columns":
+        {
+            "prompt": "instructions",
+            "query": "input",
+            "history": "history",
+            "response": "output",
+            "system": "system"
+        }
+    },
+    "wmzy_1000":
+    {
+        "file_name": "/mnt/llm-data/users/wanghao277/data/wmzy/wmzy_1000.json",
+        "formatting": "alpaca",
+        "columns":
+        {
+            "prompt": "instructions",
+            "query": "input",
+            "history": "history",
+            "response": "output",
+            "system": "system"
+        }
+    },
+    "shouhou": {
+    "file_name": "/mnt/llm-data/users/wanghao277/data/shouhou/shouhou_data_train.json",
+    "columns":{
+      "prompt":"instruction",
+      "response":"output"
+    }
+  }
+}

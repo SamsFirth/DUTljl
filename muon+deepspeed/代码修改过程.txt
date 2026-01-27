@@ -1,0 +1,577 @@
+注意DISABLE_VERSION_CHECK=1参数
+
+nohup env DISABLE_VERSION_CHECK=1 llamafactory-cli train 40b-sft-full.yaml > /mnt/llm-data/users/wanghao277/40b-sft-log-new.txt 2>&1 &
+
+观察发现llamafactory仓库中使用muon优化器进行训练的配置文件中，没有deepspeed的设置，直接添加会报错，参考issue#8041，muon+deepspeed的讨论
+
+首先合并这个pr：https://github.com/hiyouga/LlamaFactory/pull/7808
+
+执行训练
+
+报错：
+MissingCUDAException^ : ^ CUDA_HOME does not exist, unable to compile CUDA op(s)
+需要：
+conda install -c nvidia cuda-compiler
+
+报错：
+ImportError: deepspeed>=0.10.0,<=0.16.9 is required for a normal functioning of this module, but found deepspeed==0.18.4.
+需要：
+pip install "deepspeed>=0.10.0,<=0.16.9"
+
+报错：
+ImportError: cannot import name 'LossKwargs' from 'transformers.utils'
+需要：
+pip install "transformers==4.53.3"
+
+新建环境，按照官方安装依赖：
+报错：
+ImportError: cannot import name 'make_batched_videos' from 'transformers.image_utils' (/root/miniconda3/lib/python3.10/site-packages/transformers/image_utils.py)
+需要：
+data/mm_plugin.py中：
+if is_transformers_version_greater_than("4.45.0"):
+    from transformers.models.mllama.processing_mllama import (
+        convert_sparse_cross_attention_mask_to_dense,
+        get_cross_attention_token_mask,
+    )
+
+if is_transformers_version_greater_than("4.49.0"):
+    from transformers.image_utils import make_flat_list_of_images
+
+    # 不要只靠版本号，改为按可用性导入
+    try:
+        from transformers.video_utils import make_batched_videos
+    except Exception:
+        # 一些版本里仍在 image_utils 或不存在
+        try:
+            from transformers.image_utils import make_batched_videos
+        except Exception:
+            make_batched_videos = None
+
+报错：
+ImportError: cannot import name 'PPODecorators' from 'trl.core' (/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/trl/core.py)
+需要：
+pip uninstall -y trl
+pip install "trl==0.9.6"
+
+以上报错在启动时设置环境变量DISABLE_VERSION_CHECK=1即可不出现
+
+在配置文件中template切换为deepseek3
+
+报错：
+ValueError: No modules of type [<class 'transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3MoE'>] found in model DeepseekV3ForCausalLM(
+需要：moe.py中：
+def _set_z3_leaf_modules(model: "PreTrainedModel", leaf_modules: list[type]) -> None:
+    check_version("deepspeed>=0.13.0")
+    from deepspeed.utils import set_z3_leaf_modules  # type: ignore
+
+    if not leaf_modules:
+        logger.warning("leaf_modules is empty; skip set_z3_leaf_modules.")
+        return
+
+    try:
+        set_z3_leaf_modules(model, leaf_modules)
+    except ValueError as e:
+        # 典型：No modules of type ... found
+        logger.warning(f"set_z3_leaf_modules skipped: {e}")
+        return
+
+def add_z3_leaf_module(model: "PreTrainedModel") -> None:
+    r"""Set module as a leaf module to skip partitioning in deepspeed zero3."""
+    if not is_deepspeed_zero3_enabled():
+        return
+
+    model_type = getattr(model.config, "model_type", None)
+    if model_type == "dbrx":
+        from transformers.models.dbrx.modeling_dbrx import DbrxFFN
+
+        _set_z3_leaf_modules(model, [DbrxFFN])
+
+    if model_type == "jamba":
+        from transformers.models.jamba.modeling_jamba import JambaSparseMoeBlock
+
+        _set_z3_leaf_modules(model, [JambaSparseMoeBlock])
+
+    if model_type == "jetmoe":
+        from transformers.models.jetmoe.modeling_jetmoe import JetMoeMoA, JetMoeMoE
+
+        _set_z3_leaf_modules(model, [JetMoeMoA, JetMoeMoE])
+
+    if model_type in ["kimi_vl", "deepseek_v3"]:
+        # 不再强依赖固定 import 路径；remote code / 动态模块时 class 会不一致
+        moe_classes = list({
+            type(m) for m in model.modules()
+            if type(m).__name__ == "DeepseekV3MoE"
+        })
+
+        if not moe_classes:
+            logger.warning("No DeepseekV3MoE modules found in model; skip set_z3_leaf_modules.")
+        else:
+            _set_z3_leaf_modules(model, moe_classes)
+
+    if model_type == "mixtral":
+        from transformers.models.mixtral.modeling_mixtral import MixtralSparseMoeBlock
+
+        _set_z3_leaf_modules(model, [MixtralSparseMoeBlock])
+
+    if model_type == "qwen2_moe":
+        from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
+
+        _set_z3_leaf_modules(model, [Qwen2MoeSparseMoeBlock])
+
+报错，缺少ues_muon：
+[rank2]: Traceback (most recent call last):
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/launcher.py", line 23, in <module>
+[rank2]:     launch()
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/launcher.py", line 19, in launch
+[rank2]:     run_exp()
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/tuner.py", line 110, in run_exp
+[rank2]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/tuner.py", line 72, in _training_function
+[rank2]:     run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/sft/workflow.py", line 96, in run_sft
+[rank2]:     train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+[rank2]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 2245, in train
+[rank2]:     return inner_training_loop(
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 2560, in _inner_training_loop
+[rank2]:     tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+[rank2]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 3782, in training_step
+[rank2]:     self.accelerator.backward(loss, **kwargs)
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/accelerate/accelerator.py", line 2732, in backward
+[rank2]:     self.deepspeed_engine_wrapped.backward(loss, sync_gradients=self.sync_gradients, **kwargs)
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/accelerate/utils/deepspeed.py", line 281, in backward
+[rank2]:     self.engine.step()
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/engine.py", line 2378, in step
+[rank2]:     self._take_model_step(lr_kwargs)
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/engine.py", line 2281, in _take_model_step
+[rank2]:     self.optimizer.step()
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/utils/nvtx.py", line 20, in wrapped_fn
+[rank2]:     ret_val = func(*args, **kwargs)
+[rank2]:               ^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/zero/stage3.py", line 2129, in step
+[rank2]:     self._optimizer_step(sub_group_id)
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/zero/stage3.py", line 987, in _optimizer_step
+[rank2]:     self.optimizer.step()
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/optim/lr_scheduler.py", line 133, in wrapper
+[rank2]:     return func.__get__(opt, opt.__class__)(*args, **kwargs)
+[rank2]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/optim/optimizer.py", line 517, in wrapper
+[rank2]:     out = func(*args, **kwargs)
+[rank2]:           ^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/third_party/muon/muon.py", line 256, in step
+[rank2]:     params = [p for p in group["params"] if self.state[p]["use_muon"]]
+[rank2]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank2]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/third_party/muon/muon.py", line 256, in <listcomp>
+[rank2]:     params = [p for p in group["params"] if self.state[p]["use_muon"]]
+[rank2]:                                             ~~~~~~~~~~~~~^^^^^^^^^^^^
+[rank2]: KeyError: 'use_muon'
+需要：
+muon.py中：
+def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        def _use_muon(p):
+            # 确保 state 存在
+            st = self.state.setdefault(p, {})
+            # 确保 use_muon 键存在：优先用 state 里已有的；否则用 param 属性；否则默认 False
+            if "use_muon" not in st:
+                st["use_muon"] = bool(getattr(p, "use_muon", False))
+            return bool(st["use_muon"])
+
+        for group in self.param_groups:
+            ############################
+            #           Muon           #
+            ############################
+            params = [p for p in group["params"] if _use_muon(p)]
+            lr = group["lr"]
+            wd = group["wd"]
+            momentum = group["momentum"]
+            ns_steps = group["ns_steps"]
+            nesterov = group["nesterov"]
+            distributed = group["distributed"]
+
+            for p in params:
+                if p.grad is None:
+                    continue
+
+                grad = self._distributed_grad_sync(p, group)
+                if grad is None:
+                    continue
+
+                state = self.state.setdefault(p, {})
+                if "momentum_buffer" not in state:
+                    state["momentum_buffer"] = torch.zeros_like(grad)
+                buf = state["momentum_buffer"]
+                buf.mul_(momentum).add_(grad)
+
+                if nesterov:
+                    update = grad.add(buf, alpha=momentum)
+                else:
+                    update = buf
+
+                u = zeropower_via_newtonschulz5(update, steps=ns_steps)
+
+                adjusted_lr = self.adjust_lr_for_muon(lr, p.shape)
+                p.data.mul_(1 - lr * wd)
+                p.data.add_(u, alpha=-adjusted_lr)
+
+                if distributed:
+                    self._distributed_param_sync(p, group)
+
+            ############################
+            #       AdamW backup       #
+            ############################
+            params = [p for p in group["params"] if not _use_muon(p)]
+            lr = group["lr"]
+            beta1, beta2 = group["adamw_betas"]
+            eps = group["adamw_eps"]
+            weight_decay = group["wd"]
+
+            for p in params:
+                if p.grad is None:
+                    continue
+
+                state = self.state.setdefault(p, {})
+                if "step" not in state:
+                    state["step"] = 0
+                    state["moment1"] = torch.zeros_like(p.grad)
+                    state["moment2"] = torch.zeros_like(p.grad)
+
+                state["step"] += 1
+                step = state["step"]
+                buf1 = state["moment1"]
+                buf2 = state["moment2"]
+
+                buf1.lerp_(p.grad, 1 - beta1)
+                buf2.lerp_(p.grad.square(), 1 - beta2)
+
+                g = buf1 / (eps + buf2.sqrt())
+
+                bias_correction1 = 1 - beta1**step
+                bias_correction2 = 1 - beta2**step
+                scale = bias_correction1 / bias_correction2**0.5
+
+                p.data.mul_(1 - lr * weight_decay)
+                p.data.add_(g, alpha=-lr / scale)
+
+        return loss
+
+显示爆显存
+需要：
+adapter.py中：
+if finetuning_args.finetuning_type == "full":
+        _setup_full_tuning(model, finetuning_args, is_trainable, False)
+
+报错：
+deepspeed.ops.op_builder.builder.CUDAMismatchException: >- DeepSpeed Op Builder: Installed CUDA version 13.1 does not match the version torch was compiled with 12.8, unable to compile cuda/cpp extensions without a matching cuda version.
+尝试：
+conda remove -y cuda-compiler
+conda install -c nvidia cuda-toolkit=12.8 cuda-nvcc=12.8
+pip uninstall -y deepspeed
+DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 pip install deepspeed==0.16.9 --no-binary deepspeed
+
+此时可以训练，但是训练起来之后，观察日志，会存在参数不在muon上的问题，日志显示muon上参数数量为0，参数全部在adamw优化器上
+
+需要：
+trainer_utils.py中：
+def _create_muon_optimizer(
+    model: "PreTrainedModel",
+    training_args: "TrainingArguments",
+) -> "torch.optim.Optimizer":
+    from llamafactory.third_party.muon import Muon  # type: ignore
+    
+    # Separate parameters for Muon (2D parameters) and AdamW (others)
+    muon_params = []
+    adamw_params = []
+    
+    cnt_total = cnt_2d_by_param = cnt_2d_by_ds = 0
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        cnt_total += 1
+        if p.ndim == 2:
+            cnt_2d_by_param += 1
+        ds_shape = getattr(p, "ds_shape", None)
+        if ds_shape is not None and len(ds_shape) == 2:
+            cnt_2d_by_ds += 1
+
+    logger.info_rank0(
+        f"trainable={cnt_total}, param.ndim==2={cnt_2d_by_param}, ds_shape.ndim==2={cnt_2d_by_ds}"
+    )
+
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+
+        # ZeRO-3 下 param 可能是 1D shard；优先用 ds_shape 还原原始形状
+        orig_shape = getattr(param, "ds_shape", None)
+        if orig_shape is None:
+            orig_shape = tuple(param.shape)
+
+        orig_ndim = len(orig_shape)
+
+        use_muon = (
+            orig_ndim == 2
+            and "embed" not in name
+            and "lm_head" not in name
+        )
+
+        # 可选：把标记挂到参数上，后面 muon 内部可直接读 getattr(p, "use_muon", False)
+        setattr(param, "use_muon", use_muon)
+
+        if use_muon:
+            muon_params.append(param)
+        else:
+            adamw_params.append(param)
+    
+    # Get optimizer settings from training_args
+    ns_steps = getattr(training_args, "ns_steps", 5)
+    
+    # Determine if we're in distributed mode
+    distributed = getattr(training_args, "local_rank", -1) != -1
+    overlap_comm = getattr(training_args, "overlap_comm", False)
+    
+    # Create Muon optimizer with distributed support
+    optimizer = Muon(
+        lr=training_args.learning_rate,
+        wd=training_args.weight_decay,
+        muon_params=muon_params,
+        momentum=0.95,  # default momentum for Muon
+        nesterov=True,  # default nesterov for Muon
+        ns_steps=ns_steps,
+        adamw_params=adamw_params,
+        adamw_betas=(training_args.adam_beta1, training_args.adam_beta2),
+        adamw_eps=training_args.adam_epsilon,
+        distributed=distributed,
+        overlap_comm=overlap_comm,
+    )
+    
+    logger.info_rank0(
+        f"Using Muon optimizer with {len(muon_params)} Muon params and {len(adamw_params)} AdamW params. "
+        f"Distributed: {distributed}, Overlap comm: {overlap_comm}"
+    )
+    return optimizer
+报错：
+[rank7]: Traceback (most recent call last):
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/launcher.py", line 23, in <module>
+[rank7]:     launch()
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/launcher.py", line 19, in launch
+[rank7]:     run_exp()
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/tuner.py", line 110, in run_exp
+[rank7]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/tuner.py", line 72, in _training_function
+[rank7]:     run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/sft/workflow.py", line 96, in run_sft
+[rank7]:     train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+[rank7]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 2245, in train
+[rank7]:     return inner_training_loop(
+[rank7]:            ^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 2327, in _inner_training_loop
+[rank7]:     self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
+[rank7]:                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/integrations/deepspeed.py", line 467, in deepspeed_init
+[rank7]:     optimizer, lr_scheduler = deepspeed_optim_sched(
+[rank7]:                               ^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/integrations/deepspeed.py", line 387, in deepspeed_optim_sched
+[rank7]:     optimizer = trainer.create_optimizer()
+[rank7]:                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/sft/trainer.py", line 84, in create_optimizer
+[rank7]:     self.optimizer = create_custom_optimizer(self.model, self.args, self.finetuning_args)
+[rank7]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/trainer_utils.py", line 592, in create_custom_optimizer
+[rank7]:     return _create_muon_optimizer(model, training_args)
+[rank7]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/trainer_utils.py", line 551, in _create_muon_optimizer
+[rank7]:     optimizer = Muon(
+[rank7]:                 ^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/third_party/muon/muon.py", line 135, in __init__
+[rank7]:     assert p.ndim == 2, "Muon only supports 2D parameters"
+[rank7]:            ^^^^^^^^^^^
+[rank7]: AssertionError: Muon only supports 2D parameters
+修改muon.py：
+    def __init__(
+        self,
+        lr=1e-3,
+        wd=0.1,
+        muon_params=None,
+        momentum=0.95,
+        nesterov=True,
+        ns_steps=5,
+        adamw_params=None,
+        adamw_betas=(0.9, 0.95),
+        adamw_eps=1e-8,
+        distributed=False,
+        overlap_comm=False,
+    ):
+        defaults = dict(
+            lr=lr,
+            wd=wd,
+            momentum=momentum,
+            nesterov=nesterov,
+            ns_steps=ns_steps,
+            adamw_betas=adamw_betas,
+            adamw_eps=adamw_eps,
+            distributed=distributed,
+            overlap_comm=overlap_comm,
+        )
+
+        params = list(muon_params) if muon_params is not None else []
+        adamw_params = list(adamw_params) if adamw_params is not None else []
+        params.extend(adamw_params)
+        super().__init__(params, defaults)
+        
+        # Sort parameters into those for which we will use Muon, and those for which we will not
+        def _orig_shape(p):
+            ds_shape = getattr(p, "ds_shape", None)
+            if ds_shape is not None:
+                return tuple(ds_shape)
+            return tuple(p.shape)
+
+        for p in muon_params:
+            shp = _orig_shape(p)
+            if len(shp) != 2:
+                # 不满足就降级到 AdamW
+                self.state[p]["use_muon"] = False
+                continue
+            self.state[p]["use_muon"] = True
+        for p in adamw_params:
+            self.state[p]["use_muon"] = False
+            
+        # Initialize communication buffers if distributed
+        if distributed:
+            # ZeRO-3 下参数往往是 shard；Muon 自己的通信 buffer 不适配，直接跳过
+            any_sharded = any(
+                hasattr(p, "ds_shape") and tuple(getattr(p, "ds_shape")) != tuple(p.shape)
+                for group in self.param_groups for p in group["params"]
+            )
+            if any_sharded:
+                # 让 step() 走非分布式路径（否则 reduce_scatter/all_gather 也会不匹配）
+                for group in self.param_groups:
+                    group["distributed"] = False
+                # 不调用 _init_distributed_buffers
+            else:
+                self._init_distributed_buffers()
+trainer_utils.py中：
+distributed = False
+overlap_comm = False
+
+此时可以训练，并且日志中：Using Muon optimizer with 30311 Muon params and 163 AdamW params，参数已通过muon优化器进行优化
+
+注意此时的训练配置文件，结合了muon与deepspeed：
+### model
+model_name_or_path: /mnt/llm-data/users/wanghao277/chatrhino-40B/hf-ckpt/pt-v2-tkn-129k-lr4.2e-4-decay500B/14860
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: examples/deepspeed/ds_z3_config.json
+use_muon: true
+
+### dataset
+dataset: wmzy_1000
+template: deepseek3
+cutoff_len: 17443
+max_samples: 100000
+overwrite_cache: true
+preprocessing_num_workers: 1
+dataloader_num_workers: 0
+
+### output
+output_dir: /mnt/llm-data/users/wanghao277/40b-output-new
+logging_steps: 1
+save_steps: 3 # 这里！！！！！！！！！！！！！！！！1
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none  # choices: [none, wandb, tensorboard, swanlab, mlflow]
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-5
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+### eval
+# val_size: 0.1
+# per_device_eval_batch_size: 1
+# eval_strategy: steps
+# eval_steps: 500
+
+
+使用zero3，但是每张卡都占了130g显存，等会儿测试一下zero3offload，每张卡显存大幅下降，但是时间会比较慢
+
+在保存checkpoint的时候报错：
+[INFO|configuration_utils.py:419] 2026-01-20 11:49:49,162 >> Configuration saved in /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/config.json
+[INFO|configuration_utils.py:911] 2026-01-20 11:49:49,163 >> Configuration saved in /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/generation_config.json
+[INFO|modeling_utils.py:3580] 2026-01-20 11:51:39,610 >> The model is bigger than the maximum size per checkpoint (5GB) and is going to be split in 20 checkpoint shards. You can find where each parameters has been saved in the index located at /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/model.safetensors.index.json.
+[INFO|tokenization_utils_base.py:2510] 2026-01-20 11:51:39,618 >> tokenizer config file saved in /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2519] 2026-01-20 11:51:39,619 >> Special tokens file saved in /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/special_tokens_map.json
+/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py:4876: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  warnings.warn(  # warn only once
+[2026-01-20 11:51:40,046] [INFO] [logging.py:107:log_dist] [Rank 0] [Torch] Checkpoint global_step3 is about to be saved!
+[2026-01-20 11:51:40,550] [INFO] [logging.py:107:log_dist] [Rank 0] Saving model checkpoint: /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/global_step3/zero_pp_rank_0_mp_rank_00_model_states.pt
+[2026-01-20 11:51:40,550] [INFO] [torch_checkpoint_engine.py:21:save] [Torch] Saving /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/global_step3/zero_pp_rank_0_mp_rank_00_model_states.pt...
+[2026-01-20 11:51:42,510] [INFO] [torch_checkpoint_engine.py:23:save] [Torch] Saved /mnt/llm-data/users/wanghao277/40b-output-new/checkpoint-3/global_step3/zero_pp_rank_0_mp_rank_00_model_states.pt.
+[rank7]: Traceback (most recent call last):
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/launcher.py", line 23, in <module>
+[rank7]:     launch()
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/launcher.py", line 19, in launch
+[rank7]:     run_exp()
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/tuner.py", line 110, in run_exp
+[rank7]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/tuner.py", line 72, in _training_function
+[rank7]:     run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
+[rank7]:   File "/mnt/llm-data/users/wanghao277/LlamaFactory/src/llamafactory/train/sft/workflow.py", line 96, in run_sft
+[rank7]:     train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+[rank7]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 2245, in train
+[rank7]:     return inner_training_loop(
+[rank7]:            ^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 2627, in _inner_training_loop
+[rank7]:     self._maybe_log_save_evaluate(
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 3103, in _maybe_log_save_evaluate
+[rank7]:     self._save_checkpoint(model, trial)
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 3211, in _save_checkpoint
+[rank7]:     self._save_optimizer_and_scheduler(output_dir)
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/transformers/trainer.py", line 3328, in _save_optimizer_and_scheduler
+[rank7]:     self.model_wrapped.save_checkpoint(output_dir)
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/engine.py", line 3335, in save_checkpoint
+[rank7]:     self._save_zero_checkpoint(save_dir, tag)
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/engine.py", line 3695, in _save_zero_checkpoint
+[rank7]:     zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(), ds_config=self.config, ds_version=version)
+[rank7]:                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/zero/stage3.py", line 2664, in state_dict
+[rank7]:     return self._rigid_state_dict()
+[rank7]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/deepspeed/runtime/zero/stage3.py", line 2644, in _rigid_state_dict
+[rank7]:     state_dict[OPTIMIZER_STATE_DICT] = self.optimizer.state_dict()
+[rank7]:                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/_compile.py", line 53, in inner
+[rank7]:     return disable_fn(*args, **kwargs)
+[rank7]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 1044, in _fn
+[rank7]:     return fn(*args, **kwargs)
+[rank7]:            ^^^^^^^^^^^^^^^^^^^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/optim/optimizer.py", line 744, in state_dict
+[rank7]:     packed_state = {
+[rank7]:                    ^
+[rank7]:   File "/mnt/llm-data/users/wanghao277/miniconda3/envs/40b-test/lib/python3.11/site-packages/torch/optim/optimizer.py", line 745, in <dictcomp>
+[rank7]:     (param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v
+[rank7]:      ~~~~~~~~~~~~~~^^^^^^^
+[rank7]: KeyError: 140592942949264
+配置文件设置：
+save_only_model: true
+
+可以正常进行训练并保存checkpoint！

@@ -1,0 +1,66 @@
+apiVersion: apps.chatrhino.cn/v1alpha1
+kind: TrainingJob
+metadata:
+  name: infer-ljl-1 #名称
+  namespace: explore-train 
+spec:
+  replicas: 16
+  backoffLimit: 0
+  sshPort: 22
+  jobSpec:
+    template:
+      spec:
+        tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "explore-train"
+          effect: "NoSchedule"
+        imagePullSecrets:
+        - name: inner
+        nodeSelector:
+          jdea.com/group-name: explore-train-wh
+        containers:
+        - name: training-container
+          command:
+          - bash
+          - /mnt/workspace/wanghao277/ljl_infer.sh
+          - /mnt/workspace/wanghao277/ljl-muon-new-64k-output/checkpoint-242 # 模型路径
+          - checkpoint-242 # 模型名称
+          - unused # system role，当前为无效参数，会从tokenizer里面读取chat template
+          - "8" # tp
+          - "4" # pp
+          - "8" # ep
+          - "4" # 每个副本由节点/容器部署
+          - "4" # 共计有多少个节点/容器
+          image: jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/omnilm/dsv32:v1
+          volumeMounts:
+          - mountPath: /mnt/workspace
+            name: data
+          - mountPath: /dev/shm
+            name: cache-volume
+          resources:
+            limits:
+              cpu: "172"
+              memory: 1813Gi            
+              nvidia.com/gpu: "8"
+              jdos.jd.com/rdma_devices: 1
+            requests:
+              cpu: "172"
+              memory: 1813Gi
+              nvidia.com/gpu: "8"
+              jdos.jd.com/rdma_devices: 1
+          securityContext:
+            capabilities:
+              add:
+              - IPC_LOCK
+            privileged: true
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: trainpvc-5p
+            readOnly: false
+        - name: cache-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+            

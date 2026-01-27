@@ -1,0 +1,60 @@
+apiVersion: apps.chatrhino.cn/v1alpha1 # 不要改
+kind: TrainingJob # 不要改
+metadata:
+  name: muon-ljl-1 # 任务名，标记一下自己
+  namespace: explore-train # 包头集群专用
+spec:
+  replicas: 16 # 重要：起多少pod副本
+  backoffLimit: 0
+  sshPort: 22
+  jobSpec:
+    template:
+      spec:
+        tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "explore-train"
+          effect: "NoSchedule"
+        imagePullSecrets:
+        - name: inner
+        nodeSelector:
+          jdea.com/group-name: explore-train-wh
+        containers:
+        - name: training-container
+          command:
+          - bash
+          - /mnt/workspace/wanghao277/muon.sh # 这里要改！！！！！！！！！！
+          image: jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/llama-factory-muon:muon-ds-20260121 # 重要：镜像！！！！！！！！！！！！！！！
+          ports:
+          - containerPort: 22
+          - containerPort: 29500
+          volumeMounts:
+          - mountPath: /mnt/workspace # 不要改
+            name: data # 不要改
+          - mountPath: /dev/shm # 不要改
+            name: cache-volume # 不要改
+          resources:
+            limits:
+              cpu: "172" # cpu数量
+              memory: 1813Gi # 内存大小
+              nvidia.com/gpu: "8" # gpu数量，如果不需要gpu就删除
+              jdos.jd.com/rdma_devices: 1
+            requests:
+              cpu: "172" # cpu数量 和上面一致
+              memory: 1813Gi # 内存大小 和上面一致
+              nvidia.com/gpu: "8" # gpu数量，如果不需要gpu就删除
+              jdos.jd.com/rdma_devices: 1
+          securityContext:
+            capabilities:
+              add:
+              - IPC_LOCK
+            privileged: true
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: trainpvc-5p # 包头集群专用
+            readOnly: false
+        - name: cache-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi # 可以改，/dev/shm是内存缓存盘
