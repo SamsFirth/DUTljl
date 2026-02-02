@@ -1,0 +1,133 @@
+多机中，llamafactory的dataset_info.json中要求数据是json才行！
+多机训练，先使用原始的llamafactory镜像，报错：
+Traceback (most recent call last):
+  File "/opt/conda/envs/ai/lib/python3.12/pathlib.py", line 488, in _str_normcase
+    return self._str_normcase_cached
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'PosixPath' object has no attribute '_str_normcase_cached'. Did you mean: '_parts_normcase_cached'?
+可能是镜像的python包有问题，自己打镜像
+
+一、镜像构建文件夹结构为：
+build--LlmafaFactory文件夹
+     |_Dockerfile
+     |_requirements.txt
+
+LlamaFactory中为修改过的llamafactory文件夹，支持muon+deepspeed单机全量训练40B模型
+
+二、Dockerfile内容：
+### start
+### -----------------------------------------------------------
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+WORKDIR /opt
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git wget curl ca-certificates \
+    build-essential cmake ninja-build \
+    libaio-dev \
+    openssh-client openssh-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Miniconda
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm -f /tmp/miniconda.sh
+ENV PATH=/opt/conda/bin:$PATH
+
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Create env: python 3.11.x
+RUN conda create -y -n train python=3.11 && conda clean -a -y
+SHELL ["bash", "-lc"]
+ENV CONDA_DEFAULT_ENV=train
+ENV PATH=/opt/conda/envs/train/bin:/opt/conda/bin:$PATH
+
+# pip toolchain
+RUN python -m pip install -U pip setuptools wheel
+
+# torch / torchvision / torchaudio from PyTorch cu128 index
+RUN pip install --index-url https://download.pytorch.org/whl/cu128 \
+    torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1
+
+# torchdata from PyPI (default index)
+RUN pip install torchdata==0.11.0
+
+# Python deps (pin)
+COPY requirements.txt /opt/requirements.txt
+RUN pip install -r /opt/requirements.txt
+
+# Install deepspeed from source to build cpu_adam ops against torch/cu128
+RUN python -c "import torch; print(torch.__version__, torch.version.cuda)"
+RUN DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 pip install deepspeed==0.16.9 --no-binary deepspeed --no-build-isolation
+
+# Your modified LlamaFactory source
+COPY LlamaFactory/ /opt/LLaMA-Factory/
+WORKDIR /opt/LLaMA-Factory
+RUN pip install -e . --no-build-isolation
+
+# Defaults (you can override in job)
+ENV OMP_NUM_THREADS=1 \
+    WANDB_MODE=offline \
+    DISABLE_VERSION_CHECK=1 \
+    NCCL_SOCKET_IFNAME=eth0
+
+EXPOSE 22 29500
+CMD ["bash"]
+
+requirements.txt：
+accelerate==1.11.0
+transformers==4.51.3
+trl==0.9.6
+peft==0.17.1
+
+datasets
+safetensors
+sentencepiece
+protobuf<5
+tqdm
+numpy
+pyyaml
+packaging
+
+### -----------------------------------------------------------
+### end
+
+
+三、requirments.txt内容：
+
+### start
+### -----------------------------------------------------------
+
+accelerate==1.11.0
+transformers==4.51.3
+trl==0.9.6
+peft==0.17.1
+
+datasets
+safetensors
+sentencepiece
+protobuf<5
+tqdm
+numpy
+pyyaml
+packaging
+
+### -----------------------------------------------------------
+### end
+
+四、相关命令
+build docker的命令：
+nohup docker build -t llama-factory:muon-ds-new . > /mnt/llm-data/users/wanghao277/build-new.txt 2>&1 &
+
+打tag的命令（注意换标签）：
+docker tag llama-factory:muon-ds \
+  jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/llama-factory-muon:muon-ds-20260120
+
+push到云（注意换标签）：
+docker push jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/llama-factory-muon:muon-ds-20260120
+
+查看镜像：
+docker images | head
