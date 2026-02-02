@@ -1,0 +1,274 @@
+多机中，llamafactory的dataset_info.json中要求数据是json才行！
+多机训练，先使用原始的llamafactory镜像，报错：
+Traceback (most recent call last):
+  File "/opt/conda/envs/ai/lib/python3.12/pathlib.py", line 488, in _str_normcase
+    return self._str_normcase_cached
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'PosixPath' object has no attribute '_str_normcase_cached'. Did you mean: '_parts_normcase_cached'?
+可能是镜像的python包有问题，自己打镜像
+
+镜像构建文件夹结构如上，LlamaFactory中为修改过的llamafactory文件夹
+
+dockerfile内容：
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+WORKDIR /opt
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git wget curl ca-certificates \
+    build-essential cmake ninja-build \
+    libaio-dev \
+    openssh-client openssh-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Miniconda
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm -f /tmp/miniconda.sh
+ENV PATH=/opt/conda/bin:$PATH
+
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Create env: python 3.11.x
+RUN conda create -y -n train python=3.11 && conda clean -a -y
+SHELL ["bash", "-lc"]
+ENV CONDA_DEFAULT_ENV=train
+ENV PATH=/opt/conda/envs/train/bin:/opt/conda/bin:$PATH
+
+# pip toolchain
+RUN python -m pip install -U pip setuptools wheel
+
+# torch / torchvision / torchaudio from PyTorch cu128 index
+RUN pip install --index-url https://download.pytorch.org/whl/cu128 \
+    torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1
+
+# torchdata from PyPI (default index)
+RUN pip install torchdata==0.11.0
+
+# Python deps (pin)
+COPY requirements.txt /opt/requirements.txt
+RUN pip install -r /opt/requirements.txt
+
+# Install deepspeed from source to build cpu_adam ops against torch/cu128
+RUN python -c "import torch; print(torch.__version__, torch.version.cuda)"
+RUN DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 pip install deepspeed==0.16.9 --no-binary deepspeed --no-build-isolation
+
+# Your modified LlamaFactory source
+COPY LlamaFactory/ /opt/LLaMA-Factory/
+WORKDIR /opt/LLaMA-Factory
+RUN pip install -e . --no-build-isolation
+
+# Defaults (you can override in job)
+ENV OMP_NUM_THREADS=1 \
+    WANDB_MODE=offline \
+    DISABLE_VERSION_CHECK=1 \
+    NCCL_SOCKET_IFNAME=eth0
+
+EXPOSE 22 29500
+CMD ["bash"]
+
+requirements.txt：
+accelerate==1.11.0
+transformers==4.51.3
+trl==0.9.6
+peft==0.17.1
+
+datasets
+safetensors
+sentencepiece
+protobuf<5
+tqdm
+numpy
+pyyaml
+packaging
+
+
+build docker：
+nohup docker build -t llama-factory:muon-ds-new . > /mnt/llm-data/users/wanghao277/build-new.txt 2>&1 &
+打tag（注意换标签）：
+docker tag llama-factory:muon-ds \
+  jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/llama-factory-muon:muon-ds-20260120
+push到云（注意换标签）：
+docker push jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/llama-factory-muon:muon-ds-20260120
+查看镜像：
+docker images | head
+debug16台机器，deepspeed-zero3-offload需要14个小时，尝试debug
+
+issue#6111：
+多机与单机训练时间一样，可能是通信变为瓶颈，强制使用IB/P2P网络，添加：
+export NCCL_DEBUG=INFO
+export NCCL_IB_DISABLE=0
+export NCCL_P2P_DISABLE=0
+export NCCL_SHM_DISABLE=0
+export NCCL_NET=IB
+unset NCCL_SOCKET_IFNAME
+没有改观
+
+issue#5014：
+帖子显示：经过验证，当使用TCP网卡的时候确实非常慢，换成IB网络就好很多了，不过多机训练效率依然不理想，GPU利用率和IB网络带宽利用率都不高
+
+issue#5659:
+问题：在使用deepspeed_zero3_offload 训练时，无论是8卡还是16卡，单卡显存占用的一样的
+DeepSpeed Zero3 应该是不支持跨节点做模型并行，所以就算有10台机器，每台8张显卡，它也只会在每台单独的机器上做模型并行，而不是把一个模型分到所有机器的所有GPU上
+
+issue#6111：
+试一下zero2，看看能不能快些，目前显示是3个小时
+
+但是训练到14步时报错：
+[Rank 2] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=31942, OpType=ALLREDUCE, NumelIn=264765440, NumelOut=264765440, Timeout(ms)=600000) ran for 600000 milliseconds before timing out.
+[rank2]:[E121 05:41:41.156517546 ProcessGroupNCCL.cpp:2241] [PG ID 1 PG GUID 1 Rank 2]  failure detected by watchdog at work sequence id: 31942 PG status: last enqueued work: 31943, last completed work: 31941
+[rank2]:[E121 05:41:41.156527492 ProcessGroupNCCL.cpp:730] Stack trace of the failed collective not found, potentially because FlightRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank2]:[E121 05:41:41.156563790 ProcessGroupNCCL.cpp:2573] [PG ID 1 PG GUID 1 Rank 2] First PG on this rank to signal dumping.
+针对这个问题搜索issue
+
+issue#7396：
+设置zero2的配置文件：
+"allgather_bucket_size": 1e10,
+"overlap_comm": true,
+"reduce_bucket_size": 1e10,
+爆显存了
+
+issue#9474与谷歌上别的很多帖子：
+设置：
+export NCCL_P2P_LEVEL=NVL
+export NCCL_TIMEOUT=7200
+没有用
+
+测试zero0，爆显存
+
+issue#2814、2702：
+添加：
+--preprocessing_num_workers 128
+export NCCL_P2P_DISABLE=1
+export NCCL_IB_DISABLE=1
+不行
+
+issue#5932:
+通过NVTX标记发现， 各个rank的DeepSpeed engine前向时间差异很大，导致反向过程中，allreduce启动步调不一致，从而通信耗时占比非常高。
+设置：
+neat_packing: true
+报错：
+[rank0]:   File "/mnt/workspace/wanghao277/hf_cahce/hf_cache_temp_1768987146/transformers_modules/14860/modeling_deepseek.py", line 411, in forward
+[rank0]:     q_rot, k_rot = apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
+[rank0]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/mnt/workspace/wanghao277/hf_cahce/hf_cache_temp_1768987146/transformers_modules/14860/modeling_deepseek.py", line 325, in apply_rotary_pos_emb_interleave
+[rank0]:     q_embed = (q * cos) + (rotate_half(q) * sin)
+[rank0]:                ~~^~~~~
+[rank0]: RuntimeError: The size of tensor a (17448) must match the size of tensor b (17443) at non-singleton dimension 2
+
+对应issue：
+数据集样本数量是否会影响，将数据集数量变为15360，为128的倍数，测试
+不行
+
+尝试添加网络需要的库，重新打一个镜像，添加一些网络需要的库
+修改脚本，当前默认走的是tcp socket，能否切换为roce网络
+
+报错：
+torch.AcceleratorError: CUDA error: Invalid access of peer GPU memory over nvlink or a hardware error
+尝试禁用p2p：
+export NCCL_P2P_DISABLE=1
+export NCCL_SHM_DISABLE=1
+不行
+
+issue#3147:
+设置模型的config的output_router_logits=True，还没有测试
+
+issue#9290:
+显示同样的问题，moe模型在训练时
+添加环境变量：
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1  #测试！！！！！！！！！！！！！！！！
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
+看到报错变为：
+RuntimeError: Detected mismatch between collectives on ranks. Rank 20 is running collective: CollectiveFingerPrint(SequenceNumber=30495, OpType=ALLREDUCE, TensorShape=[496502784], TensorDtypes=BFloat16, TensorDeviceTypes=TensorOptions(dtype=float (default), device=cuda, layout=Strided (default), requires_grad=false (default), pinned_memory=false (default), memory_format=(nullopt))), but Rank 0 is running collective: CollectiveFingerPrint(SequenceNumber=30495, OpType=ALLREDUCE, TensorShape=[498735104], TensorDtypes=BFloat16, TensorDeviceTypes=TensorOptions(dtype=float (default), device=cuda, layout=Strided (default), requires_grad=false (default), pinned_memory=false (default), memory_format=(nullopt))).Collectives differ in the following aspects:   Tensor Tensor shapes: 496502784vs 498735104
+
+不同的rank进行all reduce操作时，二者的张量形状不一样导致的
+
+帖子：
+https://blog.csdn.net/limeiran/article/details/147615979
+看一下deepspeed的源码中对应位置与trainer中training_step函数的实现，看看能否按照帖子中的方式修改
+不可行
+
+测试z2 offload：
+与z2同样的问题，allreduce张量形状不一致，速度也更慢
+
+帖子：
+https://github.com/Lightning-AI/pytorch-lightning/discussions/13997
+意思是：
+某些 expert / MoE 参数在某些 rank 的这个 step 上没有参与 backward（grad=None），但在另一些 rank 上参与了（grad tensor 存在），ZeRO2 在构建 reduce bucket 时会把“参与反向的参数集合”拼成 bucket，导致 bucket 长度在不同 rank 上不同
+
+观察模型文件夹中modeling_deepseek.py的moe类的moe函数代码：
+def moe(self, hidden_states: torch.Tensor, topk_indices: torch.Tensor, topk_weights: torch.Tensor):
+        r"""
+        CALL FOR CONTRIBUTION! I don't have time to optimise this right now, but expert weights need to be fused
+        to not have to do a loop here (deepseek has 256 experts soooo yeah).
+        """
+        final_hidden_states = torch.zeros_like(hidden_states, dtype=topk_weights.dtype)
+        expert_mask = torch.nn.functional.one_hot(topk_indices, num_classes=len(self.experts))
+        expert_mask = expert_mask.permute(2, 0, 1)
+
+        for expert_idx in range(len(self.experts)):
+            expert = self.experts[expert_idx]
+            mask = expert_mask[expert_idx]
+            token_indices, weight_indices = torch.where(mask)
+
+            if token_indices.numel() > 0:
+                expert_weights = topk_weights[token_indices, weight_indices]
+                expert_input = hidden_states[token_indices]
+                expert_output = expert(expert_input)
+                weighted_output = expert_output * expert_weights.unsqueeze(-1)
+                final_hidden_states.index_add_(0, token_indices, weighted_output)
+
+        # in original deepseek, the output of the experts are gathered once we leave this module
+        # thus the moe module is itelsf an IsolatedParallel module
+        # and all expert are "local" meaning we shard but we don't gather
+        return final_hidden_states.type(hidden_states.dtype)
+当某个 expert 在某个 rank 上没有任何 token 被路由到时，这个 expert 的 expert(...) 根本不执行，于是它的所有参数都不会出现在 autograd 图里，backward 以后这些参数的 .grad 就是 None（不是 0）。在另一些 rank 上该 expert 可能有 token，于是 .grad 是 tensor。
+
+修改一下代码：
+    def moe(self, hidden_states: torch.Tensor, topk_indices: torch.Tensor, topk_weights: torch.Tensor):
+        r"""
+        CALL FOR CONTRIBUTION! I don't have time to optimise this right now, but expert weights need to be fused
+        to not have to do a loop here (deepseek has 256 experts soooo yeah).
+        """
+        import os
+        import torch.distributed as dist
+
+        if (not dist.is_available()) or (not dist.is_initialized()) or dist.get_rank() == 0:
+            print("[DeepseekV3MoE] using patched moe() from modeling_deepseek.py", flush=True)
+
+        final_hidden_states = torch.zeros_like(hidden_states, dtype=topk_weights.dtype)
+        expert_mask = torch.nn.functional.one_hot(topk_indices, num_classes=len(self.experts))
+        expert_mask = expert_mask.permute(2, 0, 1)
+
+        for expert_idx in range(len(self.experts)):
+            expert = self.experts[expert_idx]
+            mask = expert_mask[expert_idx]
+            token_indices, weight_indices = torch.where(mask)
+
+            if token_indices.numel() > 0:
+                expert_weights = topk_weights[token_indices, weight_indices]
+                expert_input = hidden_states[token_indices]
+                expert_output = expert(expert_input)
+                weighted_output = expert_output * expert_weights.unsqueeze(-1)
+                final_hidden_states.index_add_(0, token_indices, weighted_output)
+                
+        zero = final_hidden_states.sum() * 0.0
+        for expert in self.experts:
+            for p in expert.parameters():
+                if p.requires_grad:
+                    zero = zero + p.reshape(-1)[0] * 0.0
+
+        final_hidden_states = final_hidden_states + zero
+
+        # in original deepseek, the output of the experts are gathered once we leave this module
+        # thus the moe module is itelsf an IsolatedParallel module
+        # and all expert are "local" meaning we shard but we don't gather
+        return final_hidden_states.type(hidden_states.dtype)
+让每个expert即使没有token，也会让其grad tensor为0，而不是none，保持不同rank的deepspeed的bucket形状一样。
+
+测试
+
+日志中显示[DeepseekV3MoE] using patched moe() from modeling_deepseek.py，说明使用的是模型文件夹下我修改的这个文件。
