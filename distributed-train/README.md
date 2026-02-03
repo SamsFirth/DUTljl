@@ -1,3 +1,4 @@
+
 # 说明
 
 ds-train.yaml/sh为基于megatron框架，多机lora微调deepseek-v3模型的配置文件、脚本。
@@ -5,6 +6,16 @@ ds-train.yaml/sh为基于megatron框架，多机lora微调deepseek-v3模型的�
 40b-distributed-train.yaml/sh为基于llamafactory框架、集成muon优化器+deepspeed，用于**多机分布式**全量训练40B模型的配置文件、脚本，使用的镜像即为muon+deepspeed目录中代码构建好的镜像。
 
 两个脚本的前半部分一致，包括配置环境变量、清理缓存、建立日志目录等环节，区别在于具体训练方式（二者所用框架不同）
+
+# 执行脚本
+
+-进行多机lora微调：`k apply -f ds-train.yaml`
+
+-进行多机muon+deepspeed全量训练：`k apply -f 40b-distributed-train.yaml`
+
+# 注意
+
+**在进行多机+muon+deepspeed全量训练时，参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容，需要修改模型文件夹中modeling_deepseek.py的moe类的moe函数代码！！！**
 
 # Megatron SFT 分布式训练脚本（LoRA）
 
