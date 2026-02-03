@@ -98,6 +98,8 @@ mkdir -p $HF_MODULES_CACHE
 
 ### 5.2 启动训练
 
+根据自己的情况修改配置文件与脚本中的路径、参数
+
 执行脚本：
 -进行多机lora微调：`k apply -f ds-train.yaml`
 
@@ -152,6 +154,8 @@ megatron sft \
 - 使用 DeepSpeed 配置（ZeRO-2）与 MuOn优化器
 
 **脚本前面的部分与ds-train.sh类似，差异在于启动训练的部分**
+
+根据自己的情况修改配置文件与脚本中的路径、参数
 
 执行脚本：
 -进行多机muon+deepspeed全量训练：`k apply -f 40b-distributed-train.yaml`
