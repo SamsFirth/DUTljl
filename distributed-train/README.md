@@ -8,6 +8,8 @@ ds-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文
 # 注意
 **在进行多机+muon+deepspeed全量训练时，参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容，需要修改模型文件夹中modeling_deepseek.py的moe类的moe函数代码！！！**
 
+**在包头集群上，脚本中的文件的路径需要是：/mnt/workspace/wanghao277/... 而非/mnt/jpfs-5p/wanghao277/...**
+
 # Megatron SFT 分布式训练脚本（LoRA）
 
 ds-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分布式训练，具体包含：
