@@ -3,6 +3,9 @@
 
 sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文件、脚本。用于在多机多卡环境中启动 **SGLang 推理服务**，并在 **RANK=0** 节点启动 **sglang-router**，将多个 worker 的服务地址聚合成一个路由入口
 
+# 执行脚本
+-`k apply -f sglang-infer.yaml`
+
 ## 1. 功能概览
 
 脚本的主要功能：
