@@ -12,7 +12,7 @@ build--LlmafaFactory文件夹
      |_Dockerfile
      |_requirements.txt
 
-LlamaFactory中为修改过的llamafactory文件夹，支持muon+deepspeed单机全量训练40B模型
+LlamaFactory为修改过的llamafactory文件夹，即为本仓库中的muon+deepspeed文件夹，支持muon+deepspeed单机全量训练40B模型
 
 二、Dockerfile内容：
 ### start
