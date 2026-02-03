@@ -151,14 +151,15 @@ megatron sft \
 - HuggingFace modules cache 清理与重新指定缓存目录
 - 建立训练日志（每个节点独立日志文件，带时间戳）
 - 通过 `FORCE_TORCHRUN=1` 强制走 torchrun 分布式启动
-- 使用 DeepSpeed 配置（ZeRO-2）与 MuOn优化器
+- 使用 DeepSpeed 配置（ZeRO-2）与 Muon优化器
 
 **脚本前面的部分与ds-train.sh类似，差异在于启动训练的部分**
 
 根据自己的情况修改配置文件与脚本中的路径、参数
 
 执行脚本：
--进行多机muon+deepspeed全量训练：`k apply -f 40b-distributed-train.yaml`
+-**先修改模型文件夹中modeling_deepseek.py的moe类的moe函数代码！！！**
+-之后，进行多机muon+deepspeed全量训练：`k apply -f 40b-distributed-train.yaml`
 
 脚本中启动训练的部分为：
 
