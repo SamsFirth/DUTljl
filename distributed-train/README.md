@@ -6,11 +6,12 @@ ds-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文
 两个脚本的前半部分一致，包括配置环境变量、清理缓存、建立日志目录等环节，区别在于具体训练方式（二者所用框架不同）
 
 # 注意
-**在进行多机+muon+deepspeed全量训练时，参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容，需要修改模型文件夹中modeling_deepseek.py的moe类的moe函数代码！！！**
 
 **在包头集群上，脚本中的文件的路径需要是：/mnt/workspace/wanghao277/... 而非/mnt/jpfs-5p/wanghao277/...**
 
 # Megatron SFT 分布式训练脚本（LoRA）
+
+**具体执行流程在第5.4节，README的其余部分为相关的说明**
 
 ds-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分布式训练，具体包含：
 
@@ -98,12 +99,7 @@ mkdir -p $HF_MODULES_CACHE
 - `NPROC_PER_NODE=8`
 - `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7`
 
-### 5.2 启动训练
-
-根据自己的情况修改配置文件与脚本中的路径、参数
-
-执行脚本：
--进行多机lora微调：`k apply -f ds-train.yaml`
+### 5.2 并行说明
 
 脚本中启动训练的部分为：
 
@@ -145,6 +141,18 @@ megatron sft \
 
 如果 checkpoint 是 MoE 格式，可取消注释执行一次转换，并在转换完成之后，在训练时将 DENSE_CKPT 指向转换后的 Dense 权重目录
 
+### 5.4 启动训练步骤
+
+1.修改脚本中两个日志目录的路径(或者删除旧的日志目录)：
+- log_file_dir
+- TRAIN_LOG_DIR
+
+2.修改脚本底部启动训练命令中的参数，如模型路径、数据集路径、并行参数、输出路径与lora参数等
+3.启动脚本：
+```bash
+k apply -f ds-train.yaml
+```
+
 # LLaMA-Factory（Muon + DeepSpeed）分布式全量训练训练脚本
 
 40b-distributed-train.sh脚本用于在多节点多卡环境下基于llamafactory框架并使用DeepSpeed与Muon优化器启动分布式全量训练，具体包含：
@@ -157,11 +165,26 @@ megatron sft \
 
 **脚本前面的部分与ds-train.sh类似，差异在于启动训练的部分**
 
-根据自己的情况修改配置文件与脚本中的路径、参数
+## 启动训练步骤
 
-执行脚本：
--**先修改模型文件夹中modeling_deepseek.py的moe类的moe函数代码！！！**
--之后，进行多机muon+deepspeed全量训练：`k apply -f 40b-distributed-train.yaml`
+1.配置文件中设置了使用的镜像为：支持单机全量训练+muon+deepspeed的llamafactory镜像
+2.修改日志目录或删除旧的日志目录
+3.指定数据集文件路径：
+```bash
+TRAIN_FILE=...
+```
+4.修改脚本底部启动训练命令中的参数
+- dataset_dir参数为dataset_info.json所在的路径
+- dataset参数为在dataset_info.json中定义的数据集名称
+- 其余的如模型路径、输出路径、学习率及epoch等
+
+5.**修改要训练的模型的目录中modeling_deepseek.py的moe类的moe函数代码,具体修改方式参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容**
+6.启动脚本：
+```bash
+k apply -f 40b-distributed-train.yaml
+```
+
+### 说明
 
 脚本中启动训练的部分为：
 
@@ -173,7 +196,6 @@ FORCE_TORCHRUN=1 NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER
     ...
 ```
 
-**注意**：
 1.使用torchrun命令启动分布式训练，符合llamafactory官方的启动方式
 
 2.使用的deepspeed配置为zero-2，使用zero-3会存在训练速度很慢的情况，详见llamafactory官方仓库的issue#6111，因此使用zero-2
