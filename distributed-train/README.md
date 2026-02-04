@@ -1,4 +1,6 @@
+
 # 说明
+
 ds-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文件、脚本。
 
 40b-distributed-train.yaml/sh为基于llamafactory框架、集成muon优化器+deepspeed，用于**多机分布式**全量训练40B模型的配置文件、脚本，使用的镜像即为muon+deepspeed目录中代码构建好的镜像。
@@ -35,15 +37,24 @@ ds-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分�
 按实际情况修改以下路径：
 
 - 日志目录：
-  - `log_file_dir=/mnt/workspace/wanghao277/ljl_3_logs`
-  - `TRAIN_LOG_DIR=/mnt/workspace/wanghao277/ljl_3_train_logs`
+
+-`log_file_dir=/mnt/workspace/wanghao277/ljl_3_logs`
+
+-`TRAIN_LOG_DIR=/mnt/workspace/wanghao277/ljl_3_train_logs`
+
 - 输出目录：
-  - `--save /mnt/workspace/wanghao277/ljl_3_outputs`
+
+-`--save /mnt/workspace/wanghao277/ljl_3_outputs`
+
 - 模型权重：
-  - `DENSE_CKPT=...`
-  - `--model ...`
+
+-`DENSE_CKPT=...`
+
+-`--model ...`
+
 - 数据集目录：
-  - `DATA_PATH=/mnt/workspace/wanghao277/data/0108/alpaca/`
+
+-`DATA_PATH=/mnt/workspace/wanghao277/data/0108/alpaca/`
 
 ## 3. 关键配置
 
@@ -52,27 +63,42 @@ ds-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分�
 脚本设置了常见 NCCL 优化参数，根据实际情况进行更改：
 
 - 必选：
-  - `NCCL_SOCKET_IFNAME=eth0`
+
+-`NCCL_SOCKET_IFNAME=eth0`
+
 - 可选（提升通信性能）：
-  - `NCCL_PXN_DISABLE=0`
-  - `NCCL_CROSS_NIC=1`
-  - `NCCL_IB_QPS_PER_CONNECTION=4`
+
+-`NCCL_PXN_DISABLE=0`
+
+-`NCCL_CROSS_NIC=1`
+
+-`NCCL_IB_QPS_PER_CONNECTION=4`
+
 - 其他：
-  - `TORCH_NCCL_ENABLE_MONITORING=0`
-  - `OMP_NUM_THREADS=1`
-  - `WANDB_MODE=offline`
+
+-`TORCH_NCCL_ENABLE_MONITORING=0`
+
+-`OMP_NUM_THREADS=1`
+
+-`WANDB_MODE=offline`
 
 ### 3.2 HF modules cache 清理与重定向
 
 脚本会强制清理 HuggingFace 动态模块缓存，避免旧的 remote code 版本造成bug，并新建新的缓存目录：
 
 ```bash
-rm -rf ~/.cache/huggingface/modules/transformers_modules/
-rm -rf /root/.cache/huggingface/modules/transformers_modules/
-sleep 2
 
-export HF_MODULES_CACHE="/mnt/workspace/wanghao277/hf_cahce/hf_cache_temp_$(date +%s)"
-mkdir -p $HF_MODULES_CACHE
+rm-rf~/.cache/huggingface/modules/transformers_modules/
+
+rm-rf/root/.cache/huggingface/modules/transformers_modules/
+
+sleep2
+
+
+exportHF_MODULES_CACHE="/mnt/workspace/wanghao277/hf_cahce/hf_cache_temp_$(date +%s)"
+
+mkdir-p$HF_MODULES_CACHE
+
 ```
 
 ## 4. 节点同步
@@ -80,44 +106,67 @@ mkdir -p $HF_MODULES_CACHE
 脚本通过 RANK 的编号区分主/从 RANK
 
 - RANK=0（主RANK）：
+
 写入主节点 IP 到：`$log_file_dir/host_ip.txt`
+
 写入主节点 hostname 到：`$log_file_dir/host_name.txt`
 
 - RANK!=0（从RANK）：
+
 等待上述两个文件出现，随后脚本会读取：
+
 `master_address=$(head -n 1 "$log_file")`
+
 `master_name=$(head -n 1 "$name_file")`
 
 ## 5.训练命令
 
 ### 5.1 设置分布式变量
 
-- `NNODES=${WORLD_SIZE:-16}`
-- `NODE_RANK=$RANK`
-- `MASTER_ADDR=$master_address`
-- `MASTER_PORT=22`
-- `NPROC_PER_NODE=8`
-- `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7`
+-`NNODES=${WORLD_SIZE:-16}`
+
+-`NODE_RANK=$RANK`
+
+-`MASTER_ADDR=$master_address`
+
+-`MASTER_PORT=22`
+
+-`NPROC_PER_NODE=8`
+
+-`CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7`
 
 ### 5.2 并行说明
 
 脚本中启动训练的部分为：
 
 ```bash
-megatron sft \
+
+megatronsft\
+
         ...
-        --tensor_model_parallel_size 8 \
+
+--tensor_model_parallel_size8\
+
         --sequence_parallel true \
-        --expert_model_parallel_size 16 \
+
+--expert_model_parallel_size16\
+
         --pipeline_model_parallel_size 1 \
-        --context_parallel_size 4 \
+
+--context_parallel_size4\
+
         --moe_grouped_gemm true \
-        --moe_shared_expert_overlap true \
+
+--moe_shared_expert_overlaptrue\
+
         --moe_aux_loss_coeff 0.01 \
-        ...
+
+...
+
 ```
 
 训练命令同时启用了多种并行方式来提升吞吐并适配超大模型：
+
 - Tensor Parallel（TP）：张量并行
 - Pipeline Parallel（PP）：流水并行
 - Expert Parallel（EP）：专家并行
@@ -132,11 +181,17 @@ megatron sft \
 脚本中注释掉的如下代码：
 
 ```bash
+
 # log_info "开始执行MoE→Dense权重转换..."
+
 # python ${MEGATRON_LM_PATH}/tools/convert_moe_to_dense.py \
+
 #        --load /mnt/public/zhangtianyi/MCP/checkpoints/mcore/Meta-Llama-3.1-70B \
+
 #        --save /mnt/public/zhangtianyi/MCP/checkpoints/mcore/Meta-Llama-3.1-70B-DENSE 2>&1 | tee -a "$FULL_LOG_PATH"
+
 # log_info "权重转换完成！"
+
 ```
 
 如果 checkpoint 是 MoE 格式，可取消注释执行一次转换，并在转换完成之后，在训练时将 DENSE_CKPT 指向转换后的 Dense 权重目录
@@ -144,13 +199,18 @@ megatron sft \
 ### 5.4 启动训练步骤
 
 1.修改脚本中两个日志目录的路径(或者删除旧的日志目录)：
+
 - log_file_dir
 - TRAIN_LOG_DIR
 
 2.修改脚本底部启动训练命令中的参数，如模型路径、数据集路径、并行参数、输出路径与lora参数等
+
 3.启动脚本：
+
 ```bash
-k apply -f ds-train.yaml
+
+kapply-fds-train.yaml
+
 ```
 
 # LLaMA-Factory（Muon + DeepSpeed）分布式全量训练训练脚本
@@ -168,20 +228,31 @@ k apply -f ds-train.yaml
 ## 启动训练步骤
 
 1.配置文件中设置了使用的镜像为：支持单机全量训练+muon+deepspeed的llamafactory镜像
+
 2.修改日志目录或删除旧的日志目录
+
 3.指定数据集文件路径：
+
 ```bash
+
 TRAIN_FILE=...
+
 ```
+
 4.修改脚本底部启动训练命令中的参数
+
 - dataset_dir参数为dataset_info.json所在的路径
 - dataset参数为在dataset_info.json中定义的数据集名称
 - 其余的如模型路径、输出路径、学习率及epoch等
 
-5.**修改要训练的模型的目录中modeling_deepseek.py的moe类的moe函数代码,具体修改方式参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容**
+5.**修改要训练的模型的目录中modeling_deepseek.py的moe类的moe函数代码,具体修改方式参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容**(我把40B模型的目录中的修改之后的modeling_deepseek.py拷贝在当前目录下，可以参考)
+
 6.启动脚本：
+
 ```bash
-k apply -f 40b-distributed-train.yaml
+
+kapply-f40b-distributed-train.yaml
+
 ```
 
 ### 说明
@@ -189,11 +260,17 @@ k apply -f 40b-distributed-train.yaml
 脚本中启动训练的部分为：
 
 ```bash
-FORCE_TORCHRUN=1 NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT} \
+
+FORCE_TORCHRUN=1NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT} \
+
   llamafactory-cli train \
-    --model_name_or_path ... \
+
+--model_name_or_path...\
+
     --dataset_dir ... \
-    ...
+
+...
+
 ```
 
 1.使用torchrun命令启动分布式训练，符合llamafactory官方的启动方式
@@ -203,6 +280,9 @@ FORCE_TORCHRUN=1 NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER
 3.由于框架为llamafactory，因此需要配置dataset_info.json，将训练命令中的dataset_dir参数设置为dataset_info.json所在的文件夹
 
 4.注意，在脚本中设置了DISABLE_VERSION_CHECK环境变量，不可取消：
+
 ```bash
-export DISABLE_VERSION_CHECK=1 # 重要
+
+exportDISABLE_VERSION_CHECK=1# 重要
+
 ```
