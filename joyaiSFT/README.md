@@ -77,7 +77,8 @@ pip install flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.w
 ]
 ```
 2. 配置lora微调的配置文件，位置在：lowresource-sft/run/750B-sft-lora.yaml
-3. 在lowresource-sft/run/路径下，执行如下命令，开始微调模型：
+3. 注意：如果需要继续之前的检查点训练，需要设置resume_from_checkpoint参数为对应的checkpoint的路径；否则，置为null
+4. 在lowresource-sft/run/路径下，执行如下命令，开始微调模型：
 ```bash
 python train.py 750B-sft-lora.yaml
 ```
