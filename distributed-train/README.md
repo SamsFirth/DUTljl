@@ -1,4 +1,3 @@
-
 # 说明
 
 ds-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文件、脚本。
@@ -87,18 +86,12 @@ ds-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分�
 脚本会强制清理 HuggingFace 动态模块缓存，避免旧的 remote code 版本造成bug，并新建新的缓存目录：
 
 ```bash
+rm -rf ~/.cache/huggingface/modules/transformers_modules/
+rm -rf /root/.cache/huggingface/modules/transformers_modules/
+sleep 2
 
-rm-rf~/.cache/huggingface/modules/transformers_modules/
-
-rm-rf/root/.cache/huggingface/modules/transformers_modules/
-
-sleep2
-
-
-exportHF_MODULES_CACHE="/mnt/workspace/wanghao277/hf_cahce/hf_cache_temp_$(date +%s)"
-
-mkdir-p$HF_MODULES_CACHE
-
+export HF_MODULES_CACHE="/mnt/workspace/wanghao277/hf_cahce/hf_cache_temp_$(date +%s)"
+mkdir -p $HF_MODULES_CACHE
 ```
 
 ## 4. 节点同步
@@ -140,29 +133,17 @@ mkdir-p$HF_MODULES_CACHE
 脚本中启动训练的部分为：
 
 ```bash
-
-megatronsft\
-
+megatron sft \
         ...
-
---tensor_model_parallel_size8\
-
+        --tensor_model_parallel_size 8 \
         --sequence_parallel true \
-
---expert_model_parallel_size16\
-
+        --expert_model_parallel_size 16 \
         --pipeline_model_parallel_size 1 \
-
---context_parallel_size4\
-
+        --context_parallel_size 4 \
         --moe_grouped_gemm true \
-
---moe_shared_expert_overlaptrue\
-
+        --moe_shared_expert_overlap true \
         --moe_aux_loss_coeff 0.01 \
-
-...
-
+        ...
 ```
 
 训练命令同时启用了多种并行方式来提升吞吐并适配超大模型：
@@ -181,17 +162,11 @@ megatronsft\
 脚本中注释掉的如下代码：
 
 ```bash
-
 # log_info "开始执行MoE→Dense权重转换..."
-
 # python ${MEGATRON_LM_PATH}/tools/convert_moe_to_dense.py \
-
 #        --load /mnt/public/zhangtianyi/MCP/checkpoints/mcore/Meta-Llama-3.1-70B \
-
 #        --save /mnt/public/zhangtianyi/MCP/checkpoints/mcore/Meta-Llama-3.1-70B-DENSE 2>&1 | tee -a "$FULL_LOG_PATH"
-
 # log_info "权重转换完成！"
-
 ```
 
 如果 checkpoint 是 MoE 格式，可取消注释执行一次转换，并在转换完成之后，在训练时将 DENSE_CKPT 指向转换后的 Dense 权重目录
@@ -209,7 +184,7 @@ megatronsft\
 
 ```bash
 
-kapply-fds-train.yaml
+k apply -f ds-train.yaml
 
 ```
 
@@ -251,7 +226,7 @@ TRAIN_FILE=...
 
 ```bash
 
-kapply-f40b-distributed-train.yaml
+k apply -f 40b-distributed-train.yaml
 
 ```
 
@@ -260,17 +235,11 @@ kapply-f40b-distributed-train.yaml
 脚本中启动训练的部分为：
 
 ```bash
-
-FORCE_TORCHRUN=1NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT} \
-
+FORCE_TORCHRUN=1 NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT} \
   llamafactory-cli train \
-
---model_name_or_path...\
-
+    --model_name_or_path ... \
     --dataset_dir ... \
-
-...
-
+    ...
 ```
 
 1.使用torchrun命令启动分布式训练，符合llamafactory官方的启动方式
@@ -283,6 +252,6 @@ FORCE_TORCHRUN=1NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER_
 
 ```bash
 
-exportDISABLE_VERSION_CHECK=1# 重要
+export DISABLE_VERSION_CHECK=1# 重要
 
 ```

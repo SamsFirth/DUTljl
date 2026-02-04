@@ -1,4 +1,3 @@
-
 # 说明
 
 此目录中包含使用sglang进行推理的配置文件与脚本：sglang-infer.yaml/sh，以及使用脚本生成的api接口进行测试的代码：api-test.py
@@ -71,15 +70,10 @@ sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文
 具体代码位于脚本顶部与启动命令中，已经被我注释，需要则取消注释即可：
 
 ```bash
-
 # cp .../function_call_parser.py  /sgl-workspace/sglang/python/sglang/srt/function_call
-
 # cp .../qwen3_coder_check_detector.py /sgl-workspace/sglang/python/sglang/srt/function_call
-
 ...
-
 # --tool-call-parser qwen3_coder_check \
-
 ```
 
 ## 5. 启动方式
@@ -89,27 +83,16 @@ sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文
 在配置文件中，可以设置如下几个参数，具体说明在下一节：
 
 ```bash
-
--bash
-
--/mnt/workspace/wanghao277/ljl_infer.sh
-
--/mnt/workspace/wanghao277/ljl-muon-new-64k-output/checkpoint-242# 模型路径
-
--checkpoint-242# 模型名称
-
--unused# system role，当前为无效参数，会从tokenizer里面读取chat template
-
--"8"# tp
-
--"4"# pp
-
--"8"# ep
-
--"4"# 每个副本由节点/容器部署
-
--"4"# 共计有多少个节点/容器
-
+- bash
+- /mnt/workspace/wanghao277/ljl_infer.sh
+- /mnt/workspace/wanghao277/ljl-muon-new-64k-output/checkpoint-242 # 模型路径
+- checkpoint-242 # 模型名称
+- unused # system role，当前为无效参数，会从tokenizer里面读取chat template
+- "8" # tp
+- "4" # pp
+- "8" # ep
+- "4" # 每个副本由节点/容器部署
+- "4" # 共计有多少个节点/容器
 ```
 
 ### 5.2 脚本的参数
@@ -139,41 +122,23 @@ sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文
 在脚本中对应的启动服务的代码中，目前的做法是读取配置文件中设置的参数，也可以自己设置这几个参数：
 
 ```bash
-
-nohuppython3-msglang.launch_server\
-
+nohup python3 -m sglang.launch_server \
         --model-path $INPUT_DIR \
-
---tp$TP\
-
+        --tp $TP \
         --pp-size $PP \
-
---ep$EP\
-
+        --ep $EP \
         --dist-init-addr $(cat $tmp_dir/ip_node_$(((RANK / $NODE_PER_INSTANCE) * $NODE_PER_INSTANCE )).txt):21000 \
-
---nnodes$NODE_PER_INSTANCE\
-
+        --nnodes $NODE_PER_INSTANCE \
         --node-rank $((RANK % $NODE_PER_INSTANCE)) \
-
---host'0.0.0.0'\
-
+        --host '0.0.0.0' \
         --port 30001 \
-
---mem-fraction-static0.9\
-
+        --mem-fraction-static 0.9 \
         --trust-remote-code \
-
---context-length20480\
-
+        --context-length 20480 \
         > $LOGS/run${RANK}.log 2>&1 &
-
-# --cuda-graph-max-bs 16 \
-
-# --disable-cuda-graph \
-
-# --tool-call-parser qwen3_coder_check \
-
+        # --cuda-graph-max-bs 16 \
+        # --disable-cuda-graph \
+        # --tool-call-parser qwen3_coder_check \
 ```
 
 ### 5.3 对外暴露的url
@@ -194,7 +159,7 @@ router（仅 rank0 节点）：http://<rank0_ip>:30001
 
 ```bash
 
-kapply-fsglang-infer.yaml
+k apply -f sglang-infer.yaml
 
 ```
 
@@ -208,7 +173,7 @@ kapply-fsglang-infer.yaml
 
 ```bash
 
-condaactivatejoyaisft
+conda activate joyaisft
 
 ```
 
@@ -226,7 +191,7 @@ http://<ip>/v1/chat/completions
 
 ```bash
 
-pythonapi-test.py
+python api-test.py
 
 ```
 
@@ -240,13 +205,9 @@ pythonapi-test.py
 - 在脚本中若需要自定义最大上下文长度（默认读取模型config中的值），需要设置如下环境变量，以及在启动服务命令中添加自定义的context-length参数：
 
 ```bash
-
-exportSGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1
-
+export SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1
 ...
-
---context-length20480\
-
+--context-length 20480 \
 ```
 
 - 脚本中启动命令中，每行设置参数结尾的 **换行符** 后面不要有多余空格！！！
