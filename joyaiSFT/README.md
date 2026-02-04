@@ -35,7 +35,7 @@ pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 \
 wget \
   --header="PRIVATE-TOKEN: <api-token>" \
   -O joyaisft-1.0-cp311-cp311-linux_x86_64.whl \
-  "https://coding.jd.com/webapi/JDEA-ChatRhino/lowsource-sft/files/30819/joyaisft.1.0.cp311.cp311.linux.x86.64.whl"
+  "https://coding.jd.com/webapi/JDEA-ChatRhino/lowsource-sft/files/31170/joyaisft.1.0.cp311.cp311.linux.x86.64.whl"
 ```
 7. 安装joyaisft与环境依赖：
 ```bash
