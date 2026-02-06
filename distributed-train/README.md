@@ -1,6 +1,6 @@
 # 说明
 
-ds-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文件、脚本。
+750b-distributed-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文件、脚本。
 
 40b-distributed-train.yaml/sh为基于llamafactory框架、集成muon优化器+deepspeed，用于**多机分布式**全量训练40B模型的配置文件、脚本，使用的镜像即为muon+deepspeed目录中代码构建好的镜像。
 
@@ -14,7 +14,7 @@ ds-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文
 
 **具体执行流程在第5.4节，README的其余部分为相关的说明**
 
-ds-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分布式训练，具体包含：
+750b-distributed-train.sh脚本用于在多节点多卡环境下基于megatron框架启动分布式训练，具体包含：
 
 - NCCL/通信环境变量设置
 - HuggingFace modules cache 清理与重新指定缓存目录
@@ -184,7 +184,7 @@ megatron sft \
 
 ```bash
 
-k apply -f ds-train.yaml
+k apply -f 750b-distributed-train.yaml
 
 ```
 
@@ -198,7 +198,7 @@ k apply -f ds-train.yaml
 - 通过 `FORCE_TORCHRUN=1` 强制走 torchrun 分布式启动
 - 使用 DeepSpeed 配置（ZeRO-2）与 Muon优化器
 
-**脚本前面的部分与ds-train.sh类似，差异在于启动训练的部分**
+**脚本前面的部分与750b-distributed-train.sh类似，差异在于启动训练的部分**
 
 ## 启动训练步骤
 
