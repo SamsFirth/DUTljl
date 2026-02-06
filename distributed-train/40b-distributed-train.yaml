@@ -23,7 +23,7 @@ spec:
         - name: training-container
           command:
           - bash
-          - /mnt/workspace/wanghao277/muon.sh # 这里要改！！！！！！！！！！
+          - /mnt/workspace/wanghao277/40b-distributed-train.sh # 这里要改！！！！！！！！！！
           image: jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/llama-factory-muon:muon-ds-20260121 # 重要：镜像！！！！！！！！！！！！！！！
           ports:
           - containerPort: 22

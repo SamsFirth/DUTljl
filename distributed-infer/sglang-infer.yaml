@@ -23,7 +23,7 @@ spec:
         - name: training-container
           command:
           - bash
-          - /mnt/workspace/wanghao277/ljl_infer.sh
+          - /mnt/workspace/wanghao277/sglang-infer.sh
           - /mnt/workspace/wanghao277/ljl-muon-new-64k-output/checkpoint-242 # 模型路径
           - checkpoint-242 # 模型名称
           - unused # system role，当前为无效参数，会从tokenizer里面读取chat template

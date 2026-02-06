@@ -23,7 +23,7 @@ spec:
         - name: training-container
           command:
           - bash
-          - /mnt/workspace/wanghao277/ljl_train.sh
+          - /mnt/workspace/wanghao277/ds-train.sh
           image: jdea-joybuiler-train-cn-north-1.jcr.service.jdcloud.com/omnilm/ms-swift:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1 # 重要：镜像
           ports:
           - containerPort: 22
