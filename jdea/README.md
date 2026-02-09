@@ -44,7 +44,7 @@ pip install joyaisft-1.0-cp311-cp311-linux_x86_64.whl
 wget \
   --header="PRIVATE-TOKEN: <api-token>" \
   -O jdea-1.0-py3-none-any.whl \
-  "https://coding.jd.com/webapi/JDEA-ChatRhino/lowsource-sft/files/30249/jdea.1.0.py3.none.any.whl"
+  "https://coding.jd.com/webapi/JDEA-ChatRhino/lowsource-sft/files/30251/jdea.1.0.py3.none.any.whl"
 ```
 10. 安装jdea：
 ```bash
