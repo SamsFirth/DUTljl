@@ -16,59 +16,45 @@ sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文
 2. 设置 NCCL / GLOO / IB 等通信环境变量（需按集群适配）
 3. 读取本机 IP，并写入 `$LOGS/tmp/ip_node_${RANK}.txt`
 4. 每个 RANK 后台启动一个 worker：
-
--`python3 -m sglang.launch_server ... --port 30001`
-
-5.`RANK=0` 收集每个 “实例组” 的首节点 IP（步长为 `NODE_PER_INSTANCE`）
-
-6.`RANK=0` 启动 router，并把 `http://<ip>:30001` 作为 worker urls 传入
-
-7.`sleep inf` 保持进程不退出
+   - `python3 -m sglang.launch_server ... --port 30001`
+5. `RANK=0` 收集每个 “实例组” 的首节点 IP（步长为 `NODE_PER_INSTANCE`）
+6. `RANK=0` 启动 router，并把 `http://<ip>:30001` 作为 worker urls 传入
+7. `sleep inf` 保持进程不退出
 
 ## 2. 目录与文件
 
-- 日志目录：
+日志目录，位于脚本第81行：  
+  `LOGS=/mnt/workspace/wanghao277/ljl_muon_infer_logs/$NAMES`（注意修改）
 
-`LOGS=/mnt/workspace/wanghao277/ljl_muon_infer_logs/$NAMES`（注意修改）
+脚本运行之后，日志目录中会新建的相关文件：
 
-相关文件：
-
--`$LOGS/run${RANK}.log`：每个 rank 的 worker 日志
-
--`$LOGS/router.log`：router 日志（仅 RANK=0）
-
--`$LOGS/tmp/ip_node_${RANK}.txt`：每个 rank 写入的 IP
-
--`$LOGS/tmp/even_node_ips.txt`：RANK=0 收集到的 worker IP 列表
+- `$LOGS/run${RANK}.log`：每个 rank 的 worker 日志
+- `$LOGS/router.log`：router 日志（仅 RANK=0）
+- `$LOGS/tmp/ip_node_${RANK}.txt`：每个 rank 写入的 IP
+- `$LOGS/tmp/even_node_ips.txt`：RANK=0 收集到的 worker IP 列表
 
 ## 3. 环境依赖
 
 ### 3.1 必需依赖
 
-脚本会执行：
-
--`pip install /mnt/workspace/wanghao277/packages/openai-1.76.2-py3-none-any.whl`（需要提前将wheel下载到本地，并更改命令的路径）
-
--`RANK=0` 时安装 `sglang-router`
+脚本第7-11行：
+- `pip install /mnt/workspace/wanghao277/packages/openai-1.76.2-py3-none-any.whl`（需要提前将wheel下载到本地，并更改命令的路径）
+- `RANK=0` 时安装 `sglang-router`
 
 ### 3.2 设置相关的环境变量
 
-在脚本上方，例如：
-
--`NCCL_TIMEOUT=1800`
-
--`GLOO_SOCKET_IFNAME=eth0`
-
--`NCCL_SOCKET_IFNAME=eth0`
-
--`NCCL_DEBUG=INFO`
+在脚本上方第13-37行，例如：
+- `NCCL_TIMEOUT=1800`
+- `GLOO_SOCKET_IFNAME=eth0`
+- `NCCL_SOCKET_IFNAME=eth0`
+- `NCCL_DEBUG=INFO`
+非必要不必修改
 
 ## 4. 可选：使用function call模型（JoyAI 1.3T）
 
 如果要部署 JoyAI 1.3T 的 function call 模型，需要先把 parser / detector 拷贝进 sglang 源码目录。
 
-具体代码位于脚本顶部与启动命令中，已经被我注释，需要则取消注释即可：
-
+具体相关代码位于脚本顶部第3-5行，与脚本第114行的启动命令参数中，已经被我注释，需要则取消注释即可：
 ```bash
 # cp .../function_call_parser.py  /sgl-workspace/sglang/python/sglang/srt/function_call
 # cp .../qwen3_coder_check_detector.py /sgl-workspace/sglang/python/sglang/srt/function_call
@@ -80,8 +66,7 @@ sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文
 
 ### 5.1 配置文件
 
-在配置文件中，可以设置如下几个参数，具体说明在下一节：
-
+在配置文件第25-34行，可以设置如下几个参数，具体说明在下一节：
 ```bash
 - bash
 - /mnt/workspace/wanghao277/ljl_infer.sh
@@ -97,30 +82,20 @@ sglang-infer.yaml/sh为在集群上基于sglang进行分布式推理的配置文
 
 ### 5.2 脚本的参数
 
-脚本设置了8个参数，其默认值为：
+脚本第73-80行，设置了8个参数，其默认值为：
 
 | 参数 | 默认值 |
-
 |---|---|
-
 | INPUT_DIR | /mnt/workspace/wanghao277/hf/merge-with-s2-0528-19-dpo-LR3e-7-unification_dpo_0528_postive_origianl_negative_count25410 |
-
 | NAMES | deepseek-v3-base-ddp |
-
 | ROLE | chatrhino |
-
 | TP | 32 |
-
 | PP | 32 |
-
 | EP | 32 |
-
 | NODE_PER_INSTANCE | 4 |
-
 | WORLD_SIZE | 16 |
 
-在脚本中对应的启动服务的代码中，目前的做法是读取配置文件中设置的参数，也可以自己设置这几个参数：
-
+在脚本中对应的启动服务的代码中，目前的做法是读取配置文件中设置的参数：
 ```bash
 nohup python3 -m sglang.launch_server \
         --model-path $INPUT_DIR \
@@ -144,72 +119,54 @@ nohup python3 -m sglang.launch_server \
 ### 5.3 对外暴露的url
 
 worker（每个节点/进程）：http://<worker_ip>:30001（注意端口是30001！！！）
-
 router（仅 rank0 节点）：http://<rank0_ip>:30001
 
 对应的ip需要在日志中查看（详见上面第二节，日志与文件）
 
 ### 5.4 执行脚本
 
-1.根据自己的情况，**修改配置文件中的参数**，用于传输给脚本读取
-
-2.在脚本中，修改第81行LOGS目录的位置，或删除之前训练的旧LOGS目录
-
-3.启动脚本：
-
+1.脚本第7行，提前准备好openai的whl包
+2.根据自己的情况，**修改配置文件中的参数**，用于传输给脚本读取
+3.在脚本中，修改第81行LOGS目录的位置，或删除之前训练的旧LOGS目录
+4.如需要扩大最大上下文长度，需要设置环境变量：
 ```bash
-
+export SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1
+```
+并在启动命令中设置context-length参数
+5.启动脚本：
+```bash
 k apply -f sglang-infer.yaml
-
 ```
 
 ### 5.5 推理测试
 
-1.在日志目录下，可以查看tmp目录下ip_node_x.txt的内容，得到ip
-
+1.在日志目录下，查看tmp目录下ip_node_x.txt的内容，得到ip
 2.查看run_x.log的内容，等待模型权重加载完毕
-
-3.在包头集群上，激活虚拟环境（其中包含运行api-test.py要求的依赖）：
-
+3.在包头集群机器上，激活虚拟环境（其中包含运行api-test.py要求的依赖）：
 ```bash
-
 conda activate joyaisft
-
 ```
-
-4.修改api-test.py中的API_URL参数修改为：
-
+4.修改api-test.py中的API_URL参数修改为如下，其中<ip>内容为第一步得到的ip：
 ```bash
-
 http://<ip>/v1/chat/completions
-
 ```
-
-5.修改数据集与输出结果文件的路径
-
-6.运行，进行推理测试：
-
+5.修改api-test.py中，数据集与输出结果文件的路径
+6.进行推理测试：
 ```bash
-
 python api-test.py
-
 ```
-
 7.备注，api-test.py仅适用于wmzy数据集，若要测试不同的数据集则需要更改代码的处理逻辑、评判规则
 
 ## 6. **注意**
 
--**在包头集群上，脚本中的文件的路径需要是：/mnt/workspace/wanghao277/... 而非/mnt/jpfs-5p/wanghao277/...**
-
+- **在包头集群上，脚本中的文件的路径需要是：/mnt/workspace/wanghao277/... 而非/mnt/jpfs-5p/wanghao277/...**
 - 每次启动脚本都要清空之前的日志，防止结构混乱
-- 在脚本中若需要自定义最大上下文长度（默认读取模型config中的值），需要设置如下环境变量，以及在启动服务命令中添加自定义的context-length参数：
-
+- 在脚本中若需要自定义最大上下文长度（sglabg默认方式为读取模型config中的值），需要设置如下环境变量，以及在启动服务命令中添加自定义的context-length参数：
 ```bash
 export SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1
 ...
 --context-length 20480 \
 ```
-
 - 脚本中启动命令中，每行设置参数结尾的 **换行符** 后面不要有多余空格！！！
 
 # 推理测试代码
