@@ -148,15 +148,15 @@ k apply -f sglang-infer.yaml
 
 ### 5.5 推理测试
 
-1.在日志目录下，查看tmp目录下ip_node_x.txt的内容，得到ip
-2.查看run_x.log的内容，等待模型权重加载完毕
+1.在日志目录下，查看tmp目录下ip_node_0.txt的内容，得到ip
+2.查看run_0.log的内容，等待模型权重加载完毕
 3.在包头集群机器上，激活虚拟环境（其中包含运行api-test.py要求的依赖）：
 
 ```bash
 conda activate joyaisft
 ```
 
-4.修改api-test.py中的API_URL参数修改为如下，其中`<ip>`内容为第一步得到的ip：
+4.修改api-test.py中的API_URL参数修改为如下，其中 `<ip>`内容为第一步得到的ip：
 
 ```bash
 http://<ip>/v1/chat/completions
