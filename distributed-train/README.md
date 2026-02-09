@@ -158,7 +158,11 @@ megatron sft \
 - log_file_dir
 - TRAIN_LOG_DIR
 
-2.修改脚本底部启动训练命令中的参数如：
+2.自定义分布式变量：
+- NNODES：机器数（对应配置文件中的 replicas 参数）
+- NPROC_PER_NODE：每台机器的显卡数量
+
+3.修改脚本底部启动训练命令中的参数如：
 - 模型路径：--model
 - 数据集路径：--dataset
 - 输出路径：--save
@@ -167,7 +171,7 @@ megatron sft \
 - 其他参数
 为自己需要的设置
 
-3.启动脚本：
+4.启动脚本：
 ```bash
 k apply -f 750b-distributed-train.yaml
 ```
@@ -192,27 +196,31 @@ k apply -f 750b-distributed-train.yaml
   - `log_file_dir=...`
   - `TRAIN_LOG_DIR=...`
 
-2.在脚本中第126行指定数据集文件路径：
+2.自定义分布式变量：
+- NUM_NODES：机器数（对应配置文件中的 replicas 参数）
+- GPUS_PER_NODE=8：每台机器的显卡数量
+
+3.在脚本中第126行指定数据集文件路径：
 ```bash
 TRAIN_FILE=...
 ```
-3.配置dataset_info.json的内容
+4.配置dataset_info.json的内容
 
-4.修改脚本底部第206-238行，启动训练命令中的参数：
+5.修改脚本底部第206-238行，启动训练命令中的参数：
 - --dataset_dir参数为dataset_info.json所在的路径
 - --dataset参数为在dataset_info.json中定义的数据集名称
 - 其余的如模型路径、输出路径、学习率及epoch等
 
-5.**修改要训练的模型的目录中modeling_deepseek.py的moe类的moe函数代码,具体修改方式参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容**(我把40B模型的目录中的修改之后的modeling_deepseek.py拷贝在当前目录下，可以参考)
+6.**修改要训练的模型的目录中modeling_deepseek.py的moe类的moe函数代码,具体修改方式参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容**(我把40B模型的目录中的修改之后的modeling_deepseek.py拷贝在当前目录下，可以参考)
 
-6.启动脚本：
+7.启动脚本：
 ```bash
 k apply -f 40b-distributed-train.yaml
 ```
 
 ### 说明
 
-脚本中启动训练的部分为：
+脚本中第206-238行，启动训练的部分为：
 
 ```bash
 FORCE_TORCHRUN=1 NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT} \
