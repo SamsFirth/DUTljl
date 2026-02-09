@@ -1,4 +1,5 @@
 # 说明
+
 750b-distributed-train.yaml/sh为基于megatron框架，多机lora微调750B模型的配置文件、脚本。
 
 40b-distributed-train.yaml/sh为基于llamafactory框架、集成muon优化器+deepspeed，用于**多机分布式**全量训练40B模型的配置文件、脚本，使用的镜像即为muon+deepspeed目录中代码构建好的镜像。
@@ -83,13 +84,12 @@ mkdir -p $HF_MODULES_CACHE
 脚本通过 RANK 的编号区分主/从 RANK
 
 - RANK=0（主RANK）：
-脚本第27行，写入主节点 IP 到：`$log_file_dir/host_ip.txt`
-脚本第28行，写入主节点 hostname 到：`$log_file_dir/host_name.txt`
-
+  脚本第27行，写入主节点 IP 到：`$log_file_dir/host_ip.txt`
+  脚本第28行，写入主节点 hostname 到：`$log_file_dir/host_name.txt`
 - RANK!=0（从RANK）：
-脚本第81-82行，等待上述两个文件出现，随后脚本会读取：
-`master_address=$(head -n 1 "$log_file")`
-`master_name=$(head -n 1 "$name_file")`
+  脚本第81-82行，等待上述两个文件出现，随后脚本会读取：
+  `master_address=$(head -n 1 "$log_file")`
+  `master_name=$(head -n 1 "$name_file")`
 
 ## 5.训练命令
 
@@ -127,6 +127,7 @@ megatron sft \
 ```
 
 训练命令同时启用了多种并行方式来提升吞吐并适配超大模型：
+
 - Tensor Parallel（TP）：张量并行
 - Pipeline Parallel（PP）：流水并行
 - Expert Parallel（EP）：专家并行
@@ -155,23 +156,26 @@ megatron sft \
 使用脚本启动新的训练，所需要更改的位置不多，具体步骤如下：
 
 1.修改脚本中两个日志目录的路径(或者删除旧的日志目录)：
+
 - log_file_dir
 - TRAIN_LOG_DIR
 
 2.自定义分布式变量：
+
 - NNODES：机器数（对应配置文件中的 replicas 参数）
 - NPROC_PER_NODE：每台机器的显卡数量
 
 3.修改脚本底部启动训练命令中的参数如：
+
 - 模型路径：--model
 - 数据集路径：--dataset
 - 输出路径：--save
 - 各个并行参数
 - lora参数
 - 其他参数
-为自己需要的设置
 
 4.启动脚本：
+
 ```bash
 k apply -f 750b-distributed-train.yaml
 ```
@@ -193,20 +197,25 @@ k apply -f 750b-distributed-train.yaml
 ## 启动训练步骤
 
 1.在脚本中第38行、45行修改日志目录或删除旧的日志目录：
-  - `log_file_dir=...`
-  - `TRAIN_LOG_DIR=...`
+
+- `log_file_dir=...`
+- `TRAIN_LOG_DIR=...`
 
 2.自定义分布式变量：
+
 - NUM_NODES：机器数（对应配置文件中的 replicas 参数）
 - GPUS_PER_NODE=8：每台机器的显卡数量
 
 3.在脚本中第126行指定数据集文件路径：
+
 ```bash
 TRAIN_FILE=...
 ```
+
 4.配置dataset_info.json的内容
 
 5.修改脚本底部第206-238行，启动训练命令中的参数：
+
 - --dataset_dir参数为dataset_info.json所在的路径
 - --dataset参数为在dataset_info.json中定义的数据集名称
 - 其余的如模型路径、输出路径、学习率及epoch等
@@ -214,6 +223,7 @@ TRAIN_FILE=...
 6.**修改要训练的模型的目录中modeling_deepseek.py的moe类的moe函数代码,具体修改方式参考muon+deepspeed文件夹下的多机代码修改过程.txt底部的内容**(我把40B模型的目录中的修改之后的modeling_deepseek.py拷贝在当前目录下，可以参考)
 
 7.启动脚本：
+
 ```bash
 k apply -f 40b-distributed-train.yaml
 ```
@@ -237,6 +247,7 @@ FORCE_TORCHRUN=1 NNODES=${NUM_NODES} NODE_RANK=${NODE_RANK} MASTER_ADDR=${MASTER
 3.由于框架为llamafactory，因此需要配置dataset_info.json，配置dataset_info.json并将训练命令中的dataset_dir参数设置为dataset_info.json所在的路径
 
 4.注意，在脚本第200行设置了DISABLE_VERSION_CHECK环境变量，不可取消：
+
 ```bash
 export DISABLE_VERSION_CHECK=1 # 重要
 ```
